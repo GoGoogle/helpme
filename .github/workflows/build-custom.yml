@@ -1,0 +1,137 @@
+name: Build RustDesk (Host/Controller, zh/en, x64 single-file)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    strategy:
+      matrix:
+        role: [ host, controller ]   # 两套构建
+    env:
+      VCPKG_ROOT: C:\vcpkg
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # 安装 Rust (MSVC)
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      # VS/MSVC 环境（Windows runner 自带 VS，但此步可确保工具链就绪）
+      - name: Setup MSVC DevCmd
+        uses: ilammy/msvc-dev-cmd@v1
+
+      # vcpkg 依赖（按官方 Windows 构建文档）
+      - name: Setup vcpkg
+        run: |
+          if (!(Test-Path $env:VCPKG_ROOT)) { git clone https://github.com/microsoft/vcpkg $env:VCPKG_ROOT }
+          cd $env:VCPKG_ROOT
+          .\bootstrap-vcpkg.bat
+          .\vcpkg.exe install aom:x64-windows-static libyuv:x64-windows-static opus:x64-windows-static libvpx:x64-windows-static
+
+      # 下载 Sciter SDK（x64），用于内嵌
+      - name: Download Sciter SDK
+        run: |
+          curl -L -o sciter.zip https://sciter.com/download/sciter-sdk.zip
+          tar -xf sciter.zip
+          copy sciter-sdk/bin/windows/x64/sciter.dll .\custom\sciter.dll
+
+      # 注入你的默认设置/语言裁剪/角色定制/禁用更新等“轻改”
+      - name: Prepare customization
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path custom | Out-Null
+          # 1) 默认设置文件
+          Set-Content -Path custom\defaults.toml -Value @"
+{{PUT_YOUR_DEFAULTS_TOML_HERE}}
+"@
+          # 2) 仅保留中/英语言资源：移除其它 lang 包（示例路径，按仓库实际调整）
+          Get-ChildItem -Recurse -Path . -Include *.json,*.ini | Where-Object {
+              $_.FullName -match "lang|i18n"
+          } | Where-Object {
+              $_.Name -notmatch "en|zh|zh-cn|zh_CN"
+          } | Remove-Item -Force -ErrorAction SilentlyContinue
+
+          # 3) 删除/隐藏 登录、关于 菜单（示例：把相应菜单节点注释掉）
+          Get-ChildItem -Recurse -Include *.htm,*.html,*.tis | ForEach-Object {
+            (Get-Content $_.FullName) -replace '(?is)<li[^>]*id="menu-(login|about)".*?</li>', '<!-- removed -->' |
+              Set-Content $_.FullName
+          }
+
+          # 4) 关闭自动更新：屏蔽更新检查调用（示例——按源码实际路径名称微调）
+          (Get-Content src\common.rs) -replace 'check_software_update\(\);', '// check_software_update(); // disabled' |
+            Set-Content src\common.rs
+
+          # 5) 简单“单文件”内嵌：把 sciter.dll 和 UI 资源以 bytes 方式编进可执行
+          #    示例：在 src\bin\embed_sciter.rs / build.rs 增加 include_bytes! 逻辑（以下为示意）
+          Add-Content -Path src\bin\embed_sciter.rs -Value @"
+pub fn ensure_sciter_loaded() {
+    use std::{env,fs,io::Write,path::PathBuf};
+    let dll_bytes: &[u8] = include_bytes!(r\"../../custom/sciter.dll\");
+    let dir = env::temp_dir().join(\"rdsc\");
+    let path = dir.join(\"sciter.dll\");
+    fs::create_dir_all(&dir).ok();
+    if !path.exists() {
+        let mut f = fs::File::create(&path).unwrap();
+        f.write_all(dll_bytes).unwrap();
+    }
+    unsafe { let _ = windows_sys::Win32::System::LibraryLoader::LoadLibraryW(
+        widestring::U16CString::from_str(path.to_string_lossy().to_string()).unwrap().as_ptr()
+    ); }
+}
+"@
+
+          # 6) 被控端解析 -port / -pw（示例：合并到启动前配置）
+          Add-Content -Path src\bin\cli_overrides.rs -Value @"
+pub fn apply_cli_overrides(cfg: &mut toml::Value) {
+    let args: Vec<String> = std::env::args().collect();
+    let mut i = 0;
+    while i + 1 < args.len() {
+        match args[i].as_str() {
+            \"-port\" => { if let Ok(p)=args[i+1].parse::<u16>() { cfg[\"direct-access-port\"]=toml::Value::from(p); } i+=2; }
+            \"-pw\"   => { cfg[\"default-connect-password\"]=toml::Value::from(args[i+1].clone()); i+=2; }
+            _ => i += 1,
+        }
+    }
+}
+"@
+
+      # 构建（按角色切换特性；Release；x64 静态依赖）
+      - name: Build (${{ matrix.role }})
+        shell: pwsh
+        run: |
+          $role = "${{ matrix.role }}"
+          if ($role -eq "host") { $features = "role_host" } else { $features = "role_controller" }
+          $env:RUSTFLAGS = "-C target-cpu=x86-64-v3"
+          cargo build --release --features "$features"
+          # 运行一次“内嵌加载”初始化：编译产物里调用 ensure_sciter_loaded()
+
+      - name: Package single-file
+        shell: pwsh
+        run: |
+          $role = "${{ matrix.role }}"
+          $src = "target\\release\\rustdesk.exe" # 视仓库实际二进制名调整
+          $dst = if ($role -eq "host") { "AdminHost_x64.exe" } else { "AdminController_x64.exe" }
+          copy $src $dst
+          # 可选：UPX 压缩（runner 未预装 upx，若需可自行下载）
+          # curl -L -o upx.zip https://github.com/upx/upx/releases/download/v4.2.4/upx-4.2.4-win64.zip
+          # tar -xf upx.zip; .\upx-4.2.4-win64\upx.exe --best $dst
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.role == 'host' && 'AdminHost_x64' || 'AdminController_x64' }}
+          path: |
+            AdminHost_x64.exe
+            AdminController_x64.exe
+          if-no-files-found: ignore
