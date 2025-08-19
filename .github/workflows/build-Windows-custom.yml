@@ -13,7 +13,7 @@ jobs:
 
     strategy:
       matrix:
-        role: [server, client]  # server=被控端, client=主控端
+        role: [server, client]   # server=被控端, client=主控端
 
     steps:
       - name: Checkout repository
@@ -38,43 +38,47 @@ jobs:
         run: C:\vcpkg\vcpkg install
 
       - name: Setup role.rs and config.rs
-  shell: pwsh
-  run: |
-    New-Item -ItemType Directory -Path custom -Force | Out-Null
+        shell: pwsh
+        env:
+          ROLE: ${{ matrix.role }}
+        run: |
+          # 创建目录
+          New-Item -ItemType Directory -Path custom -Force | Out-Null
+      
+          # role.rs
+          if ($env:ROLE -eq "server") {
+            'pub const ROLE: &str = "server";' | Out-File -Encoding UTF8 custom/role.rs
+          } else {
+            'pub const ROLE: &str = "client";' | Out-File -Encoding UTF8 custom/role.rs
+          }
+      
+          # config.rs - 自定义默认配置
+          $config = @"
+      pub const LANGUAGE: &str = "auto";
+      
+      pub const ENABLE_REMOTE_CONFIG: bool = true;
+      pub const ENABLE_KEYBOARD_MOUSE: bool = true;
+      pub const ENABLE_CLIPBOARD_SYNC: bool = true;
+      pub const ENABLE_TERMINAL: bool = true;
+      pub const ENABLE_REMOTE_REBOOT: bool = true;
+      pub const ENABLE_TCP_TUNNEL: bool = true;
+      pub const ENABLE_BLOCK_INPUT: bool = true;
+      pub const ENABLE_LAN_DISCOVERY: bool = true;
+      pub const ENABLE_SERVICE: bool = true;
+      pub const ENABLE_DIRECT_IP: bool = true;
+      
+      pub const SHOW_LOGIN: bool = false;
+      pub const ENABLE_AUTO_UPDATE: bool = false;
+      pub const SHOW_ABOUT: bool = false;
+      
+      pub const AUTO_START: bool = true;
+      pub const HIDE_UI: bool = true;
+      
+      pub const DEFAULT_PORT: u16 = 21115;
+      pub const DEFAULT_PASSWORD: &str = "123456";
+      "@
+          $config | Out-File -Encoding UTF8 custom/config.rs
 
-    # role.rs
-    if ("${{ matrix.role }}" -eq "server") {
-        'pub const ROLE: &str = "server";' | Out-File -Encoding UTF8 custom/role.rs
-    } else {
-        'pub const ROLE: &str = "client";' | Out-File -Encoding UTF8 custom/role.rs
-    }
-
-    # config.rs
-    @'
-    pub const LANGUAGE: &str = "auto";  // 中文/英文自动识别
-    
-    pub const ENABLE_REMOTE_CONFIG: bool = true;
-    pub const ENABLE_KEYBOARD_MOUSE: bool = true;
-    pub const ENABLE_CLIPBOARD_SYNC: bool = true;
-    pub const ENABLE_TERMINAL: bool = true;
-    pub const ENABLE_REMOTE_REBOOT: bool = true;
-    pub const ENABLE_TCP_TUNNEL: bool = true;
-    pub const ENABLE_BLOCK_INPUT: bool = true;
-    pub const ENABLE_LAN_DISCOVERY: bool = true;
-    pub const ENABLE_SERVICE: bool = true;
-    pub const ENABLE_DIRECT_IP: bool = true;
-    
-    pub const SHOW_LOGIN: bool = false;
-    pub const ENABLE_AUTO_UPDATE: bool = false;
-    pub const SHOW_ABOUT: bool = false;
-    
-    pub const AUTO_START: bool = true;        // server 默认开机自启
-    pub const HIDE_UI: bool = true;           // server 隐藏前端界面
-    
-    pub const DEFAULT_PORT: u16 = 21115;
-    pub const DEFAULT_PASSWORD: &str = "123456";
-    '@ | Out-File -Encoding UTF8 custom/config.rs
-    
       - name: Build release
         run: cargo build --release --locked
 
@@ -82,10 +86,10 @@ jobs:
         shell: pwsh
         run: |
           mkdir output -Force
-          if ("${{ matrix.role }}" -eq "server") {
-              copy target\release\rustdesk.exe output\rustdesk-server.exe
+          if ($env:ROLE -eq "server") {
+            copy target\release\rustdesk.exe output\rustdesk-server.exe
           } else {
-              copy target\release\rustdesk.exe output\rustdesk-client.exe
+            copy target\release\rustdesk.exe output\rustdesk-client.exe
           }
 
       - name: Upload artifacts
