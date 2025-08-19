@@ -1,9 +1,10 @@
-name: Build RustDesk (Host/Controller, zh/en, x64 single-file)
+name: Build Custom RustDesk
 
 on:
   workflow_dispatch:
   push:
-    branches: [ main, master ]
+    branches:
+      - main
 
 jobs:
   build:
@@ -11,142 +12,42 @@ jobs:
 
     strategy:
       matrix:
-        role: [ host, controller ]
-    env:
-      VCPKG_ROOT: C:\vcpkg
+        role: [client, server]   # client = 主控端, server = 被控端
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
         with:
-          submodules: recursive
+          toolchain: stable
+          target: x86_64-pc-windows-msvc
+          override: true
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo
+        uses: actions/cache@v3
         with:
-          components: clippy
-
-      - name: Setup MSVC DevCmd
-        uses: ilammy/msvc-dev-cmd@v1
-
-      - name: Setup vcpkg
-        run: |
-          if (!(Test-Path $env:VCPKG_ROOT)) { git clone https://github.com/microsoft/vcpkg $env:VCPKG_ROOT }
-          cd $env:VCPKG_ROOT
-          .\bootstrap-vcpkg.bat
-          .\vcpkg.exe install aom:x64-windows-static libyuv:x64-windows-static opus:x64-windows-static libvpx:x64-windows-static
-
-      - name: Download Sciter SDK
-        run: |
-          curl -L -o sciter.zip https://sciter.com/download/sciter-sdk.zip
-          tar -xf sciter.zip
-          copy sciter-sdk/bin/windows/x64/sciter.dll .\custom\sciter.dll
-
-      - name: Prepare customization
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path custom | Out-Null
-
-          # 写入默认设置
-          @"
-enable-keyboard = "Y"
-enable-clipboard = "Y"
-enable-terminal = "Y"
-enable-remote-restart = "Y"
-enable-tunnel = "Y"
-enable-block-input = "Y"
-allow-remote-config-modification = "Y"
-enable-lan-discovery = "Y"
-direct-server = "Y"
-direct-access-port = 9958
-lang = "default"
-hide-tray = "Y"
-pre-elevate-service = "Y"
-"@ | Set-Content -Path custom\defaults.toml
-
-          # 删除非中/英语言文件
-          Get-ChildItem -Recurse -Path . -Include *.json,*.ini | Where-Object {
-              $_.FullName -match "lang|i18n"
-          } | Where-Object {
-              $_.Name -notmatch "en|zh|zh-cn|zh_CN"
-          } | Remove-Item -Force -ErrorAction SilentlyContinue
-
-          # 删除/隐藏 登录、关于 菜单
-          Get-ChildItem -Recurse -Include *.htm,*.html,*.tis | ForEach-Object {
-            (Get-Content $_.FullName) -replace '(?is)<li[^>]*id="menu-(login|about)".*?</li>', '<!-- removed -->' |
-              Set-Content $_.FullName
-          }
-
-          # 关闭自动更新
-          (Get-Content src\common.rs) -replace 'check_software_update\(\);', '// check_software_update(); // disabled' |
-            Set-Content src\common.rs
-
-          # 添加简单的 sciter 内嵌逻辑（示例）
-          Add-Content -Path src\bin\embed_sciter.rs -Value @"
-pub fn ensure_sciter_loaded() {
-    use std::{env,fs,io::Write};
-    let dll_bytes: &[u8] = include_bytes!(r\"../../custom/sciter.dll\");
-    let dir = env::temp_dir().join(\"rdsc\");
-    let path = dir.join(\"sciter.dll\");
-    fs::create_dir_all(&dir).ok();
-    if !path.exists() {
-        let mut f = fs::File::create(&path).unwrap();
-        f.write_all(dll_bytes).unwrap();
-    }
-    unsafe {
-        let wide: Vec<u16> = path.to_string_lossy().encode_utf16().collect();
-        let _ = windows_sys::Win32::System::LibraryLoader::LoadLibraryW(wide.as_ptr());
-    }
-}
-"@
-
-          # 被控端解析 -port/-pw 参数
-          Add-Content -Path src\bin\cli_overrides.rs -Value @"
-pub fn apply_cli_overrides(cfg: &mut toml::Value) {
-    let args: Vec<String> = std::env::args().collect();
-    let mut i = 0;
-    while i + 1 < args.len() {
-        match args[i].as_str() {
-            \"-port\" => {
-                if let Ok(p) = args[i+1].parse::<u16>() {
-                    cfg[\"direct-access-port\"] = toml::Value::from(p);
-                }
-                i += 2;
-            }
-            \"-pw\" => {
-                cfg[\"default-connect-password\"] = toml::Value::from(args[i+1].clone());
-                i += 2;
-            }
-            _ => i += 1,
-        }
-    }
-}
-"@
-
-      - name: Build (${{ matrix.role }})
-        shell: pwsh
-        run: |
-          $role = "${{ matrix.role }}"
-          if ($role -eq "host") { $features = "role_host" } else { $features = "role_controller" }
-          $env:RUSTFLAGS = "-C target-cpu=x86-64-v3"
-          cargo build --release --features "$features"
-
-      - name: Package single-file
-        shell: pwsh
-        run: |
-          $role = "${{ matrix.role }}"
-          $src = "target\\release\\rustdesk.exe"
-          if ($role -eq "host") {
-            copy $src AdminHost_x64.exe
-          } else {
-            copy $src AdminController_x64.exe
-          }
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: RustDesk-${{ matrix.role }}
           path: |
-            AdminHost_x64.exe
-            AdminController_x64.exe
-          if-no-files-found: ignore
+            C:\Users\runneradmin\.cargo\registry
+            C:\Users\runneradmin\.cargo\git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Setup role.rs
+        run: |
+          echo "fn role() -> &'static str { \"${{ matrix.role }}\" }" > custom/role.rs
+
+      - name: Build release
+        run: cargo build --release --bin rustdesk
+
+      - name: Rename artifact
+        run: |
+          mkdir output
+          copy target\release\rustdesk.exe output\rustdesk-${{ matrix.role }}.exe
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: rustdesk-${{ matrix.role }}
+          path: output/rustdesk-${{ matrix.role }}.exe
