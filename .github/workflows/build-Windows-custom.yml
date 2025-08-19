@@ -6,11 +6,11 @@ on:
       default_port:
         description: '默认端口'
         required: true
-        default: '9958'
+        default: '21115'
       default_password:
         description: '默认密码'
         required: true
-        default: '99589958'
+        default: '123456'
   push:
     branches: [ main ]
   pull_request:
@@ -39,12 +39,12 @@ jobs:
           git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
           C:\vcpkg\bootstrap-vcpkg.bat
 
-      - name: Install opus via Vcpkg (classic mode)
+      - name: Install opus via Vcpkg (static)
         shell: pwsh
         run: |
-          C:\vcpkg\vcpkg install opus:x64-windows --classic
+          C:\vcpkg\vcpkg install opus:x64-windows-static --classic
           setx VCPKG_ROOT C:\vcpkg
-          setx VCPKG_DEFAULT_TRIPLET x64-windows
+          setx VCPKG_DEFAULT_TRIPLET x64-windows-static
 
       - name: Setup role.rs and config.rs
         shell: pwsh
@@ -94,7 +94,7 @@ jobs:
         shell: pwsh
         run: |
           $env:VCPKG_ROOT="C:\vcpkg"
-          $env:VCPKG_DEFAULT_TRIPLET="x64-windows"
+          $env:VCPKG_DEFAULT_TRIPLET="x64-windows-static"
           cargo build --release --locked
 
       - name: Rename artifact
