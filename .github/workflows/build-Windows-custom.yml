@@ -39,10 +39,10 @@ jobs:
           git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
           C:\vcpkg\bootstrap-vcpkg.bat
 
-      - name: Install opus via Vcpkg (static)
+      - name: Install static dependencies via Vcpkg
         shell: pwsh
         run: |
-          C:\vcpkg\vcpkg install opus:x64-windows-static --classic
+          C:\vcpkg\vcpkg install opus:x64-windows-static libvpx:x64-windows-static libyuv:x64-windows-static --classic
           setx VCPKG_ROOT C:\vcpkg
           setx VCPKG_DEFAULT_TRIPLET x64-windows-static
 
