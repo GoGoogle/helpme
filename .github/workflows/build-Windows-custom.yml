@@ -72,7 +72,6 @@ pub const SHOW_ABOUT: bool = false;
 pub const AUTO_START: bool = true;        // server 默认开机自启
 pub const HIDE_UI: bool = true;           // server 隐藏前端界面
 
-// 默认端口和密码，可通过命令行覆盖
 pub const DEFAULT_PORT: u16 = 9958;
 pub const DEFAULT_PASSWORD: &str = "99589958";
 "@ | Out-File -Encoding UTF8 custom/config.rs
