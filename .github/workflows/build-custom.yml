@@ -1,52 +1,30 @@
-name: Build Custom RustDesk
+name: Build Custom Role
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - main
+  pull_request:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
 
-    strategy:
-      matrix:
-        role: [client, server] 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Install Rust
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-          target: x86_64-pc-windows-msvc
           override: true
 
-      - name: Cache cargo
-        uses: actions/cache@v3
+      - name: Build project
+        run: cargo build --release
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
         with:
-          path: |
-            C:\Users\runneradmin\.cargo\registry
-            C:\Users\runneradmin\.cargo\git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Setup role.rs
-        run: |
-          echo "fn role() -> &'static str { \"${{ matrix.role }}\" }" > custom/role.rs
-
-      - name: Build release
-        run: cargo build --release --bin rustdesk
-
-      - name: Rename artifact
-        run: |
-          mkdir output
-          copy target\release\rustdesk.exe output\rustdesk-${{ matrix.role }}.exe
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: rustdesk-${{ matrix.role }}
-          path: output/rustdesk-${{ matrix.role }}.exe
+          name: custom-role
+          path: target/release/
