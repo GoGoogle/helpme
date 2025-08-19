@@ -12,8 +12,7 @@ jobs:
 
     strategy:
       matrix:
-        role: [client, server]   # client = 主控端, server = 被控端
-
+        role: [client, server] 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
