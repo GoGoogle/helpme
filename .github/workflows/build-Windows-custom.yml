@@ -2,6 +2,15 @@ name: Build Custom RustDesk Windows
 
 on:
   workflow_dispatch:
+    inputs:
+      default_port:
+        description: '默认端口'
+        required: true
+        default: '9958'
+      default_password:
+        description: '默认密码'
+        required: true
+        default: '99589958'
   push:
     branches: [ main ]
   pull_request:
@@ -30,17 +39,19 @@ jobs:
           git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
           C:\vcpkg\bootstrap-vcpkg.bat
 
-      - name: Set VCPKG_ROOT
-        run: echo "VCPKG_ROOT=C:\\vcpkg" >> $env:GITHUB_ENV
-
-      - name: Install Vcpkg dependencies
+      - name: Install opus via Vcpkg (classic mode)
         shell: pwsh
-        run: C:\vcpkg\vcpkg install
+        run: |
+          C:\vcpkg\vcpkg install opus:x64-windows --classic
+          setx VCPKG_ROOT C:\vcpkg
+          setx VCPKG_DEFAULT_TRIPLET x64-windows
 
       - name: Setup role.rs and config.rs
         shell: pwsh
         env:
           ROLE: ${{ matrix.role }}
+          DEFAULT_PORT: ${{ github.event.inputs.default_port }}
+          DEFAULT_PASSWORD: ${{ github.event.inputs.default_password }}
         run: |
           # 创建目录
           New-Item -ItemType Directory -Path custom -Force | Out-Null
@@ -52,7 +63,7 @@ jobs:
             Set-Content -Path custom/role.rs -Value 'pub const ROLE: &str = "client";' -Encoding UTF8
           }
 
-          # config.rs - 逐行写入，避免多行字符串解析错误
+          # config.rs - 逐行写入，使用输入参数
           $lines = @(
             'pub const LANGUAGE: &str = "auto";'
             ''
@@ -74,13 +85,16 @@ jobs:
             'pub const AUTO_START: bool = true;'
             'pub const HIDE_UI: bool = true;'
             ''
-            'pub const DEFAULT_PORT: u16 = 21115;'
-            'pub const DEFAULT_PASSWORD: &str = "123456";'
+            "pub const DEFAULT_PORT: u16 = $env:DEFAULT_PORT;"
+            "pub const DEFAULT_PASSWORD: &str = '$env:DEFAULT_PASSWORD';"
           )
           Set-Content -Path custom/config.rs -Value $lines -Encoding UTF8
 
       - name: Build release
+        shell: pwsh
         run: |
+          $env:VCPKG_ROOT="C:\vcpkg"
+          $env:VCPKG_DEFAULT_TRIPLET="x64-windows"
           cargo build --release --locked
 
       - name: Rename artifact
