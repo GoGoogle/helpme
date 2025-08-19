@@ -33,9 +33,9 @@ jobs:
       - name: Set VCPKG_ROOT
         run: echo "VCPKG_ROOT=C:\\vcpkg" >> $env:GITHUB_ENV
 
-      - name: Install Opus library
+      - name: Install Vcpkg dependencies (manifest mode)
         shell: pwsh
-        run: C:\vcpkg\vcpkg install opus:x64-windows
+        run: C:\vcpkg\vcpkg install
 
       - name: Setup role.rs
         shell: pwsh
