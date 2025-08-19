@@ -1,0 +1,25 @@
+# 安全/权限：全部开启
+enable-keyboard = "Y"
+enable-clipboard = "Y"
+enable-terminal = "Y"
+enable-remote-restart = "Y"
+enable-tunnel = "Y"
+enable-block-input = "Y"
+allow-remote-config-modification = "Y"
+
+# 网络/发现/直连
+enable-lan-discovery = "Y"
+direct-server = "Y"
+direct-access-port = 9958
+enable-udp-punch = "Y"
+enable-ipv6-punch = "Y"
+
+# 常规
+lang = "default"
+hide-tray = "Y"
+pre-elevate-service = "Y"
+
+# 其他你关心的舒适项（可选）
+enable-open-new-connections-in-tabs = "Y"
+allow-remove-wallpaper = "Y"
+enable-abr = "Y"
