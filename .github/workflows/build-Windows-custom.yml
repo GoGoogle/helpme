@@ -1,7 +1,7 @@
 name: Build Custom RustDesk Windows
 
 on:
-  workflow_dispatch:   # 手动触发
+  workflow_dispatch:
   push:
     branches: [ main ]
   pull_request:
@@ -13,7 +13,7 @@ jobs:
 
     strategy:
       matrix:
-        role: [server, client]   # server=被控端, client=主控端
+        role: [server, client]
 
     steps:
       - name: Checkout repository
@@ -33,7 +33,7 @@ jobs:
       - name: Set VCPKG_ROOT
         run: echo "VCPKG_ROOT=C:\\vcpkg" >> $env:GITHUB_ENV
 
-      - name: Install Vcpkg dependencies (manifest mode)
+      - name: Install Vcpkg dependencies
         shell: pwsh
         run: C:\vcpkg\vcpkg install
 
@@ -44,43 +44,44 @@ jobs:
         run: |
           # 创建目录
           New-Item -ItemType Directory -Path custom -Force | Out-Null
-      
+
           # role.rs
           if ($env:ROLE -eq "server") {
-            'pub const ROLE: &str = "server";' | Out-File -Encoding UTF8 custom/role.rs
+            Set-Content -Path custom/role.rs -Value 'pub const ROLE: &str = "server";' -Encoding UTF8
           } else {
-            'pub const ROLE: &str = "client";' | Out-File -Encoding UTF8 custom/role.rs
+            Set-Content -Path custom/role.rs -Value 'pub const ROLE: &str = "client";' -Encoding UTF8
           }
-      
-          # config.rs - 自定义默认配置
-          $config = @"
-      pub const LANGUAGE: &str = "auto";
-      
-      pub const ENABLE_REMOTE_CONFIG: bool = true;
-      pub const ENABLE_KEYBOARD_MOUSE: bool = true;
-      pub const ENABLE_CLIPBOARD_SYNC: bool = true;
-      pub const ENABLE_TERMINAL: bool = true;
-      pub const ENABLE_REMOTE_REBOOT: bool = true;
-      pub const ENABLE_TCP_TUNNEL: bool = true;
-      pub const ENABLE_BLOCK_INPUT: bool = true;
-      pub const ENABLE_LAN_DISCOVERY: bool = true;
-      pub const ENABLE_SERVICE: bool = true;
-      pub const ENABLE_DIRECT_IP: bool = true;
-      
-      pub const SHOW_LOGIN: bool = false;
-      pub const ENABLE_AUTO_UPDATE: bool = false;
-      pub const SHOW_ABOUT: bool = false;
-      
-      pub const AUTO_START: bool = true;
-      pub const HIDE_UI: bool = true;
-      
-      pub const DEFAULT_PORT: u16 = 21115;
-      pub const DEFAULT_PASSWORD: &str = "123456";
-      "@
-          $config | Out-File -Encoding UTF8 custom/config.rs
+
+          # config.rs - 逐行写入，避免多行字符串解析错误
+          $lines = @(
+            'pub const LANGUAGE: &str = "auto";'
+            ''
+            'pub const ENABLE_REMOTE_CONFIG: bool = true;'
+            'pub const ENABLE_KEYBOARD_MOUSE: bool = true;'
+            'pub const ENABLE_CLIPBOARD_SYNC: bool = true;'
+            'pub const ENABLE_TERMINAL: bool = true;'
+            'pub const ENABLE_REMOTE_REBOOT: bool = true;'
+            'pub const ENABLE_TCP_TUNNEL: bool = true;'
+            'pub const ENABLE_BLOCK_INPUT: bool = true;'
+            'pub const ENABLE_LAN_DISCOVERY: bool = true;'
+            'pub const ENABLE_SERVICE: bool = true;'
+            'pub const ENABLE_DIRECT_IP: bool = true;'
+            ''
+            'pub const SHOW_LOGIN: bool = false;'
+            'pub const ENABLE_AUTO_UPDATE: bool = false;'
+            'pub const SHOW_ABOUT: bool = false;'
+            ''
+            'pub const AUTO_START: bool = true;'
+            'pub const HIDE_UI: bool = true;'
+            ''
+            'pub const DEFAULT_PORT: u16 = 21115;'
+            'pub const DEFAULT_PASSWORD: &str = "123456";'
+          )
+          Set-Content -Path custom/config.rs -Value $lines -Encoding UTF8
 
       - name: Build release
-        run: cargo build --release --locked
+        run: |
+          cargo build --release --locked
 
       - name: Rename artifact
         shell: pwsh
@@ -90,7 +91,6 @@ jobs:
             copy target\release\rustdesk.exe output\rustdesk-server.exe
           } else {
             copy target\release\rustdesk.exe output\rustdesk-client.exe
-          }
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
