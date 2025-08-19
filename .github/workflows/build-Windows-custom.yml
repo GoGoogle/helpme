@@ -25,14 +25,18 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Setup role.rs
+        shell: pwsh
         run: |
-          mkdir custom
+          # 创建 custom 目录，如果已存在不会报错
+          New-Item -ItemType Directory -Path custom -Force | Out-Null
+      
+          # 根据 matrix.role 写入 role.rs
           if ("${{ matrix.role }}" -eq "server") {
-            echo 'pub const ROLE: &str = "server";' > custom/role.rs
+              'pub const ROLE: &str = "server";' | Out-File -Encoding UTF8 custom/role.rs
           } else {
-            echo 'pub const ROLE: &str = "client";' > custom/role.rs
+              'pub const ROLE: &str = "client";' | Out-File -Encoding UTF8 custom/role.rs
           }
-
+          
       - name: Build project
         run: cargo build --release --locked
 
