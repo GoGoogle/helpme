@@ -1,4 +1,4 @@
-name: Build Custom Role
+name: Build Custom
 
 on:
   push:
@@ -11,20 +11,34 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Rust
+      - name: Set up Rust
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           override: true
 
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
       - name: Build project
         run: cargo build --release
 
-      - name: Upload build artifacts
+      - name: Run tests
+        run: cargo test --release
+
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: custom-role
+          name: custom-binary
           path: target/release/
