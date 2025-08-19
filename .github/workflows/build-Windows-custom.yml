@@ -1,4 +1,4 @@
-name: Build Custom Windows
+name: Build Custom RustDesk Windows
 
 on:
   workflow_dispatch:   # 手动触发
@@ -19,34 +19,45 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          submodules: recursive   # 确保所有子模块被拉取
+          submodules: recursive
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install Vcpkg
+        shell: pwsh
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
+          C:\vcpkg\bootstrap-vcpkg.bat
+
+      - name: Set VCPKG_ROOT
+        run: echo "VCPKG_ROOT=C:\\vcpkg" >> $env:GITHUB_ENV
+
+      - name: Install Opus library
+        shell: pwsh
+        run: C:\vcpkg\vcpkg install opus:x64-windows
+
       - name: Setup role.rs
         shell: pwsh
         run: |
-          # 创建 custom 目录，如果已存在不会报错
           New-Item -ItemType Directory -Path custom -Force | Out-Null
-      
-          # 根据 matrix.role 写入 role.rs
           if ("${{ matrix.role }}" -eq "server") {
               'pub const ROLE: &str = "server";' | Out-File -Encoding UTF8 custom/role.rs
           } else {
               'pub const ROLE: &str = "client";' | Out-File -Encoding UTF8 custom/role.rs
           }
-          
-      - name: Build project
+
+      - name: Build release
         run: cargo build --release --locked
 
       - name: Rename artifact
+        shell: pwsh
         run: |
-          mkdir output
+          mkdir output -Force
           if ("${{ matrix.role }}" -eq "server") {
-            copy target\release\rustdesk.exe output\rustdesk-server.exe
+              copy target\release\rustdesk.exe output\rustdesk-server.exe
           } else {
-            copy target\release\rustdesk.exe output\rustdesk-client.exe
+              copy target\release\rustdesk.exe output\rustdesk-client.exe
           }
 
       - name: Upload artifacts
