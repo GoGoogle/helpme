@@ -101,11 +101,17 @@ jobs:
       - name: Rename artifact
         shell: pwsh
         run: |
-          mkdir output -Force
+          # 确保 output 目录存在
+          if (-Not (Test-Path output)) {
+            New-Item -ItemType Directory -Path output | Out-Null
+          }
+
+          # 根据角色重命名生成文件
           if ($env:ROLE -eq "server") {
-            copy target\release\rustdesk.exe output\rustdesk-server.exe
+              Copy-Item -Path target\release\rustdesk.exe -Destination output\rustdesk-server.exe -Force
           } else {
-            copy target\release\rustdesk.exe output\rustdesk-client.exe
+              Copy-Item -Path target\release\rustdesk.exe -Destination output\rustdesk-client.exe -Force
+          }
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
