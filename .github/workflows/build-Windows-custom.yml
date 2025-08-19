@@ -1,7 +1,7 @@
 name: Build Custom Windows
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:   # 手动触发
   push:
     branches: [ main ]
   pull_request:
@@ -11,18 +11,42 @@ jobs:
   build-windows:
     runs-on: windows-latest
 
+    strategy:
+      matrix:
+        role: [server, client]   # server=被控端, client=主控端
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          submodules: recursive   # 确保所有子模块被拉取
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Build project
-        run: cargo build --release
+      - name: Setup role.rs
+        run: |
+          mkdir custom
+          if ("${{ matrix.role }}" -eq "server") {
+            echo 'pub const ROLE: &str = "server";' > custom/role.rs
+          } else {
+            echo 'pub const ROLE: &str = "client";' > custom/role.rs
+          }
 
-      - name: Upload artifact (exe)
+      - name: Build project
+        run: cargo build --release --locked
+
+      - name: Rename artifact
+        run: |
+          mkdir output
+          if ("${{ matrix.role }}" -eq "server") {
+            copy target\release\rustdesk.exe output\rustdesk-server.exe
+          } else {
+            copy target\release\rustdesk.exe output\rustdesk-client.exe
+          }
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: custom-windows-exe
-          path: target/release/*.exe
+          name: rustdesk-${{ matrix.role }}
+          path: output/*.exe
